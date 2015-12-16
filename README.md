@@ -21,4 +21,4 @@ The SyncEngine provides iOS platform to sync data from local to online server or
 #import "Headers.h"
 ```
 
-Remaining documenation coming soon.
+Remaining documentation coming soon.
