@@ -11,9 +11,11 @@ The SyncEngine provides iOS platform to sync data from local to online server or
 
 4. Click Finish.
 
+### Swift 
+
 5. Click `Create Bridging Header`.
 
-6. Now click on `projectName-Bridging-Header.h` file and paste following header files.
+6. Now click on `projectName-Bridging-Header.h` file and paste following header.
 
 ```
 #import "Headers.h"
