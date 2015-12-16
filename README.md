@@ -3,7 +3,7 @@ The SyncEngine provides iOS platform to sync data from local to online server or
 
 ### Installation
 
-1. Download whole all files or do `git clone https://github.com/immortalsantee/SyncEngine.git` using terminal.
+1. Download zip file or do `git clone https://github.com/immortalsantee/SyncEngine.git` using terminal.
 
 2. Double click `SyncEngine` folder and select all files. Drag it into your xcode project. Dont forget to check `Copy items if needed` as destination.
 
