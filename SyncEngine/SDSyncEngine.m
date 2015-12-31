@@ -232,7 +232,7 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
                     NSLog(@"coredatabase = %@",coreDatas);
                     NSLog(@"downlaod = %@", downloadRecord);
                     
-                    if ([coreDatas containsObject:downloadRecord]) {
+                    if ([coreDatas containsObject:serverID]) {
                         
                         NSLog(@"update for coredata");
                         
@@ -614,10 +614,18 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
     if (JSONDictionary)
     {
         NSString *checkNull;
-        if ([JSONDictionary valueForKey:@"results"])
+        
+        @try
         {
-            checkNull = @"not null";
-        }else
+            if ([JSONDictionary objectForKey:@"results"])
+            {
+                checkNull = @"not null";
+            }else
+            {
+                checkNull = nil;
+            }
+        }
+        @catch (NSException *exception)
         {
             checkNull = nil;
         }
