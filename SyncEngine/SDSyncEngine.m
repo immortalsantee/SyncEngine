@@ -33,6 +33,7 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
 @implementation SDSyncEngine
 
 @synthesize syncInProgress = _syncInProgress;
+@synthesize debugMode = _debugMode;
 @synthesize syncCompleteMessage = _syncCompleteMessage;
 @synthesize registeredClassesToSync = _registeredClassesToSync;
 @synthesize dateFormatter = _dateFormatter;
@@ -44,6 +45,7 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         sharedEngine = [[SDSyncEngine alloc] init];
+        debugMode = true;
     });
     return sharedEngine;
 }
@@ -66,10 +68,14 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
                 [self.registeredClassesToSync addObject:NSStringFromClass(aClass)];
             }
         } else {
-            NSLog(@"Unable to register %@ as it is already registered", NSStringFromClass(aClass));
+            if (debugMode) {
+                NSLog(@"Unable to register %@ as it is already registered", NSStringFromClass(aClass));
+            }
         }
     } else {
-        NSLog(@"Unable to register %@ as it is not a subclass of NSManagedObject", NSStringFromClass(aClass));
+        if (debugMode) {
+            NSLog(@"Unable to register %@ as it is not a subclass of NSManagedObject", NSStringFromClass(aClass));
+        }
     }
 }
 
@@ -87,14 +93,18 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
 #pragma mark : Sync Conditions
 
 - (BOOL)initialSyncComplete {
-    NSLog(@"initial sync complete status = %d",[[[NSUserDefaults standardUserDefaults] valueForKey:kSDSyncEngineInitialCompleteKey] boolValue]);
+    if (debugMode) {
+        NSLog(@"initial sync complete status = %d",[[[NSUserDefaults standardUserDefaults] valueForKey:kSDSyncEngineInitialCompleteKey] boolValue]);
+    }
     return [[[NSUserDefaults standardUserDefaults] valueForKey:kSDSyncEngineInitialCompleteKey] boolValue];
 }
 
 - (void)setInitialSyncCompleted {
     [[NSUserDefaults standardUserDefaults] setValue:[NSNumber numberWithBool:YES] forKey:kSDSyncEngineInitialCompleteKey];
     [[NSUserDefaults standardUserDefaults] synchronize];
-    NSLog(@"setInitialSyncCompleted status = %d",[[[NSUserDefaults standardUserDefaults] valueForKey:kSDSyncEngineInitialCompleteKey] boolValue]);
+    if (debugMode) {
+        NSLog(@"setInitialSyncCompleted status = %d",[[[NSUserDefaults standardUserDefaults] valueForKey:kSDSyncEngineInitialCompleteKey] boolValue]);
+    }
 }
 
 - (void)executeSyncCompletedOperations {
@@ -121,7 +131,7 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
 #pragma mark : start syncing
 
 - (void)startSync {
-    if (!self.syncInProgress) {
+    if (!self.syncInProgress && [self isConnectedToInternet]) {
         [self willChangeValueForKey:@"syncInProgress"];
         _syncInProgress = YES;
         [self didChangeValueForKey:@"syncInProgress"];
@@ -152,25 +162,34 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
         }
         
         NSDictionary *parameters = [self parameters:className updatedAfterDate:mostRecentUpdatedDate loggedInUserId:[className loggedInUserId] forTable:className];
-        NSLog(@"\nclass name = %@ || \nclasswise Loggedin userid = %@ || \nurl based class = %@ || \nparameters = %@\n\n", className, [className loggedInUserId] , self.baseURL, parameters);
+        if (debugMode) {
+            NSLog(@"\nclass name = %@ || \nclasswise Loggedin userid = %@ || \nurl based class = %@ || \nparameters = %@\n\n", className, [className loggedInUserId] , self.baseURL, parameters);
+        }
         
         AFHTTPRequestOperation *operation = [[SDAFParseAPIClient sharedClient] POSTRequestForClass:className APIBasedURL:self.baseURL parameters:parameters formData:^(id<AFMultipartFormData> formData) {
             // no images
         } success:^(AFHTTPRequestOperation *operation, id responseObject) {
             
-            NSLog(@"Response data are \n(class =  %@) \n%@",className,responseObject);
+            
+            if (debugMode) {
+                NSLog(@"Response data are \n(class =  %@) \n%@",className,responseObject);
+            }
             
             if ([responseObject isKindOfClass:[NSDictionary class]]) {
                 
                 [self writeJSONResponse:(id)[responseObject valueForKey:@"results"] toDiskForClassWithName:className];
                 
             }else{
-                NSLog(@"[responseObject valueForKey:@\"results\"] is not NSDictionary type ");
+                if (debugMode) {
+                    NSLog(@"[responseObject valueForKey:@\"results\"] is not NSDictionary type ");
+                }
             }
             dispatch_group_leave(group);
             
         } failure:^(AFHTTPRequestOperation *operation, NSError *error) {
-            NSLog(@"Request for class %@ failed with error: %@", className, [operation responseString]);
+            if (debugMode) {
+                NSLog(@"Request for class %@ failed with error: %@", className, [operation responseString]);
+            }
             dispatch_group_leave(group);
         }];
         
@@ -201,18 +220,26 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
         if (![self initialSyncComplete]) {
             
             NSDictionary *JSONDictionary = [self JSONDictionaryForClassWithName:className];
-            NSLog(@"JSONDictionary = %@",JSONDictionary);
+            if (debugMode) {
+                NSLog(@"JSONDictionary = %@",JSONDictionary);
+            }
             
             NSArray *records = (NSArray *)JSONDictionary;
-            NSLog(@"records = %@",records);
+            if (debugMode) {
+                NSLog(@"records = %@",records);
+            }
             for (NSDictionary *record in records) {
-                NSLog(@"proper format of record is = %@", record);
+                if (debugMode) {
+                    NSLog(@"proper format of record is = %@", record);
+                }
                 [self newManagedObjectWithClassName:className forRecord:record];
             }
             
         } else {
             
-            NSLog(@"we entered else condition");
+            if (debugMode) {
+                NSLog(@"we entered else condition");
+            }
             
             NSArray *downloadedRecords = [self JSONDataRecordsForClass:className sortedByKey:@"server_id"];
             
@@ -229,19 +256,25 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
                     formatter.numberStyle = NSNumberFormatterDecimalStyle;
                     NSNumber *serverID = [formatter numberFromString:[NSString stringWithFormat:@"%@",downloadRecord]];
                     
-                    NSLog(@"coredatabase = %@",coreDatas);
-                    NSLog(@"downlaod = %@", downloadRecord);
+                    if (debugMode) {
+                        NSLog(@"coredatabase = %@",coreDatas);
+                        NSLog(@"downlaod = %@", downloadRecord);
+                    }
                     
                     if ([coreDatas containsObject:serverID]) {
                         
-                        NSLog(@"update for coredata");
+                        if (debugMode) {
+                            NSLog(@"update for coredata");
+                        }
                         
                         int index = (int)[[storedRecords valueForKey:@"server_id"] indexOfObject:serverID];
                         [self updateManagedObject:[storedRecords objectAtIndex:index] withRecord:record];
                         
                     }else{
                         
-                        NSLog(@"Insertion for coredata");
+                        if (debugMode) {
+                            NSLog(@"Insertion for coredata");
+                        }
                         [self newManagedObjectWithClassName:className forRecord:record];
                         
                     }
@@ -253,9 +286,13 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
         [managedObjectContext performBlockAndWait:^{
             NSError *error = nil;
             if (![managedObjectContext save:&error]) {
-                NSLog(@"Unable to save context for class %@", className);
+                if (debugMode) {
+                    NSLog(@"Unable to save context for class %@", className);
+                }
             }else{
-                NSLog(@"context saved for class = %@",className);
+                if (debugMode) {
+                    NSLog(@"context saved for class = %@",className);
+                }
             }
         }];
         
@@ -290,7 +327,9 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
             NSDictionary *jsonString    =   [objectToCreate JSONToCreateObjectOnServer:@"sync_add" forTable:className];
             NSData *imageData           =   [objectToCreate imageInNSData];
             
-            NSLog(@"add parameter for post local objects to server = %@", jsonString);
+            if (debugMode) {
+                NSLog(@"add parameter for post local objects to server = %@", jsonString);
+            }
             
             
             AFHTTPRequestOperation *operation = [[SDAFParseAPIClient sharedClient] POSTRequestForClass:className APIBasedURL:self.baseURL parameters:jsonString formData:^(id<AFMultipartFormData> formData) {
@@ -299,7 +338,9 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
                 }
             } success:^(AFHTTPRequestOperation *operation, id responseObject) {
                 
-                NSLog(@"Response_code of class (%@) || result = %@",className,responseObject);
+                if (debugMode) {
+                    NSLog(@"Response_code of class (%@) || result = %@",className,responseObject);
+                }
                 
                 if ([[responseObject objectForKey:@"response_code"] isEqualToString:@"success"]) {
                     
@@ -312,7 +353,9 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
                          }
                          else
                          {
-                             NSLog(@"from SDObjectCreated section :  (%@) key is not available in coredata for new update",key);
+                             if (debugMode) {
+                                 NSLog(@"from SDObjectCreated section :  (%@) key is not available in coredata for new update",key);
+                             }
                          }
                      }];
                     
@@ -325,7 +368,9 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
                 dispatch_group_leave(group);
                 
             } failure:^(AFHTTPRequestOperation *operation, NSError *error) {
-                NSLog(@"Failed creation: %@", operation.responseString);
+                if (debugMode) {
+                    NSLog(@"Failed creation: %@", operation.responseString);
+                }
                 dispatch_group_leave(group);
             }];
             
@@ -372,7 +417,9 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
             NSDictionary *jsonString    =   [objectToCreate JSONToCreateObjectOnServer:@"sync_update" forTable:className];
             
             NSData *imageData           =   [objectToCreate imageInNSData];
-            NSLog(@"parameter for upload (%@)= %@",className, jsonString);
+            if (debugMode) {
+                NSLog(@"parameter for upload (%@)= %@",className, jsonString);
+            }
             
             AFHTTPRequestOperation *operation = [[SDAFParseAPIClient sharedClient] POSTRequestForClass:className APIBasedURL:self.baseURL parameters:jsonString formData:^(id<AFMultipartFormData> formData)
             {
@@ -383,7 +430,9 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
             } success:^(AFHTTPRequestOperation *operation, id responseObject)
             {
                 NSDictionary *responseDictionary = responseObject;
-                NSLog(@"Success response for class ( %@ ) : %@",className, responseDictionary);
+                if (debugMode) {
+                    NSLog(@"Success response for class ( %@ ) : %@",className, responseDictionary);
+                }
                 
                 if ([[responseDictionary valueForKey:@"response_code"] isEqualToString:@"success"])
                 {
@@ -396,7 +445,9 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
                          }
                          else
                          {
-                             NSLog(@"from SDObjectCreated section :  (%@) key is not available in coredata for new update",key);
+                             if (debugMode) {
+                                 NSLog(@"from SDObjectCreated section :  (%@) key is not available in coredata for new update",key);
+                             }
                          }
                      }];
                 }
@@ -405,7 +456,9 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
                 
             } failure:^(AFHTTPRequestOperation *operation, NSError *error)
             {
-                NSLog(@"Error on response on sync Update: %@ \n %@", operation.responseString, error);
+                if (debugMode) {
+                    NSLog(@"Error on response on sync Update: %@ \n %@", operation.responseString, error);
+                }
                 dispatch_group_leave(group);
             }];
             
@@ -452,7 +505,9 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
             dispatch_group_enter(group);
             
             NSDictionary *jsonString    =   [objectToDelete JSONToCreateObjectOnServer:@"sync_delete" forTable:className];
-            NSLog(@"request json string for deleteion class (%@) is %@",className, jsonString);
+            if (debugMode) {
+                NSLog(@"request json string for deleteion class (%@) is %@",className, jsonString);
+            }
             
             AFHTTPRequestOperation *operation = [[SDAFParseAPIClient sharedClient] POSTRequestForClass:className APIBasedURL:self.baseURL parameters:jsonString formData:^(id<AFMultipartFormData> formData)
             {
@@ -460,18 +515,24 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
             } success:^(AFHTTPRequestOperation *operation, id responseObject)
             {
                 
-                NSLog(@"Deletion Response : %@", responseObject);
+                if (debugMode) {
+                    NSLog(@"Deletion Response : %@", responseObject);
+                }
                 
                 if ([[responseObject valueForKey:@"response_code"] isEqualToString:@"success"]) {
                     [[[SDCoredataController sharedInstance] backgroundManagedObjectContext] deleteObject:objectToDelete];
                 }else{
-                    NSLog(@"data not deleted from coredata. But data in server is deleted. Please uninstall and install the app again.");
+                    if (debugMode) {
+                        NSLog(@"data not deleted from coredata. But data in server is deleted. Please uninstall and install the app again.");
+                    }
                 }
                 dispatch_group_leave(group);
                 
             } failure:^(AFHTTPRequestOperation *operation, NSError *error)
             {
-                NSLog(@"Failed to delete: %@", operation.responseString);
+                if (debugMode) {
+                    NSLog(@"Failed to delete: %@", operation.responseString);
+                }
                 dispatch_group_leave(group);
             }];
             
@@ -494,9 +555,13 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
             NSError *error = nil;
             BOOL saved = [[[SDCoredataController sharedInstance] backgroundManagedObjectContext] save:&error];
             if (!saved) {
-                NSLog(@"Unable to save context after deleting records");
+                if (debugMode) {
+                    NSLog(@"Unable to save context after deleting records");
+                }
             }else{
-                NSLog(@"context deleted successfully.");
+                if (debugMode) {
+                    NSLog(@"context deleted successfully.");
+                }
             }
             
             [[SDCoredataController sharedInstance] saveBackgroundContext];
@@ -508,10 +573,14 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
             BOOL saved = [[[SDCoredataController sharedInstance] backgroundManagedObjectContext] save:&error];
             if (!saved)
             {
-                NSLog(@"Unable to save context after deleting records");
+                if (debugMode) {
+                    NSLog(@"Unable to save context after deleting records");
+                }
             }else
             {
-                NSLog(@"context deleted successfully.");
+                if (debugMode) {
+                    NSLog(@"context deleted successfully.");
+                }
             }
             
             [[SDCoredataController sharedInstance] saveBackgroundContext];
@@ -541,7 +610,9 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
         NSError *error = nil;
         results = [managedObjectContext executeFetchRequest:fetchRequest error:&error];
     }];
-    NSLog(@"results from coredata are for class (%@) = %@",className, results);
+    if (debugMode) {
+        NSLog(@"results from coredata are for class (%@) = %@",className, results);
+    }
     return results;
 }
 
@@ -575,7 +646,9 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
                     formatter.numberStyle = NSNumberFormatterDecimalStyle;
                     NSNumber *value = [formatter numberFromString:[NSString stringWithFormat:@"%@",obj]];
                     
-                    NSLog(@"value = %@",value);
+                    if (debugMode) {
+                        NSLog(@"value = %@",value);
+                    }
                     
                     if ([value isEqualToNumber:[NSNumber numberWithInt:SDObjectDeleted]])
                     {
@@ -586,7 +659,9 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
                 [self setValue:obj forKey:key forManagedObject:newManagedObject];
             }else
             {
-                NSLog(@" (%@) key is not available in coredata for new insert",key);
+                if (debugMode) {
+                    NSLog(@" (%@) key is not available in coredata for new insert",key);
+                }
             }
         }];
         [downloadedRecord setValue:[NSString stringWithFormat:@"%d",SDObjectSynced] forKey:@"sync_status"];
@@ -609,7 +684,9 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
 {
     NSDictionary *JSONDictionary = [self JSONDictionaryForClassWithName:className];
     
-    NSLog(@"return datas from cache data %@ key is =%@",JSONDictionary, key);
+    if (debugMode) {
+        NSLog(@"return datas from cache data %@ key is =%@",JSONDictionary, key);
+    }
     
     if (JSONDictionary)
     {
@@ -637,7 +714,9 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
             return [records sortedArrayUsingDescriptors:[NSArray arrayWithObject: [NSSortDescriptor sortDescriptorWithKey:key ascending:YES]]];
         }else
         {
-            NSLog(@"not sucess data");
+            if (debugMode) {
+                NSLog(@"not sucess data");
+            }
         }
     }
     return nil;
@@ -648,7 +727,9 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
 
 - (NSArray *)managedObjectsForClass:(NSString *)className sortedByKey:(NSString *)key usingArrayOfIds:(NSArray *)idArray inArrayOfIds:(BOOL)inIds
 {
-    NSLog(@"comparing data from this array = %@",idArray);
+    if (debugMode) {
+        NSLog(@"comparing data from this array = %@",idArray);
+    }
     
     __block NSArray *results = nil;
     NSManagedObjectContext *managedObjectContext = [[SDCoredataController sharedInstance] backgroundManagedObjectContext];
@@ -667,9 +748,13 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
         NSError *error = nil;
         results = [managedObjectContext executeFetchRequest:fetchRequest error:&error];
     }];
-    NSLog(@"total count from coredata = %lu",(unsigned long)results.count);
+    if (debugMode) {
+        NSLog(@"total count from coredata = %lu",(unsigned long)results.count);
+    }
     for (NSManagedObject *array in results) {
-        NSLog(@"affected server_id  = %@",[array valueForKey:@"server_id"]);
+        if (debugMode) {
+            NSLog(@"affected server_id  = %@",[array valueForKey:@"server_id"]);
+        }
     }
     return results;
 }
@@ -696,7 +781,9 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
                 formatter.numberStyle = NSNumberFormatterDecimalStyle;
                 NSNumber *value = [formatter numberFromString:[NSString stringWithFormat:@"%@",obj]];
                 
-                NSLog(@"value = %@",value);
+                if (debugMode) {
+                    NSLog(@"value = %@",value);
+                }
                 
                 if ([value isEqualToNumber:[NSNumber numberWithInt:SDObjectDeleted]])
                 {
@@ -706,7 +793,9 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
             [self setValue:obj forKey:key forManagedObject:managedObject];
         }else
         {
-            NSLog(@" (%@) key is not available in coredata for new update",key);
+            if (debugMode) {
+                NSLog(@" (%@) key is not available in coredata for new update",key);
+            }
         }
     }];
     
@@ -814,10 +903,14 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
     BOOL deleted = [[NSFileManager defaultManager] removeItemAtURL:url error:&error];
     if (!deleted)
     {
-        NSLog(@"Unable to delete JSON Records at %@, reason: %@", url, error);
+        if (debugMode) {
+            NSLog(@"Unable to delete JSON Records at %@, reason: %@", url, error);
+        }
     }else
     {
-        NSLog(@"Deleting (%@) JSON Records successful",className);
+        if (debugMode) {
+            NSLog(@"Deleting (%@) JSON Records successful",className);
+        }
     }
 }
 
@@ -831,7 +924,9 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
 {
     NSURL *fileURL = [NSURL URLWithString:className relativeToURL:[self JSONDataRecordsDirectory]];
     
-    NSLog(@"file url = %@",fileURL);
+    if (debugMode) {
+        NSLog(@"file url = %@",fileURL);
+    }
     NSData* data = [NSData dataWithContentsOfFile:[fileURL path]];
     NSDictionary *localDataToDictionary = nil;
     if (data)
@@ -851,14 +946,20 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
 - (void)writeJSONResponse:(id)response toDiskForClassWithName:(NSString *)className
 {
     NSURL *fileURL = [NSURL URLWithString:className relativeToURL:[self JSONDataRecordsDirectory]];
-    NSLog(@"file url = %@",fileURL);
+    if (debugMode) {
+        NSLog(@"file url = %@",fileURL);
+    }
     
     if (![(NSDictionary *)response writeToFile:[fileURL path] atomically:YES])
     {
-        NSLog(@"Error saving response to disk, will attempt to remove NSNull values and try again.");
+        if (debugMode) {
+            NSLog(@"Error saving response to disk, will attempt to remove NSNull values and try again.");
+        }
         
         NSArray *records = (NSArray *) response;
-        NSLog(@"writeJSONResponse method says : nsarray records are from local drive = %@",records);
+        if (debugMode) {
+            NSLog(@"writeJSONResponse method says : nsarray records are from local drive = %@",records);
+        }
         
         NSMutableArray *nullFreeRecords = [NSMutableArray array];
         for (NSDictionary *record in records)
@@ -876,14 +977,20 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
         
         if (![nullFreeRecords writeToFile:[fileURL path] atomically:YES])
         {
-            NSLog(@"Failed all attempts to save response to disk: %@", response);
+            if (debugMode) {
+                NSLog(@"Failed all attempts to save response to disk: %@", response);
+            }
         }else
         {
-            NSLog(@"After failed, successfull to save response to disk : %@",response);
+            if (debugMode) {
+                NSLog(@"After failed, successfull to save response to disk : %@",response);
+            }
         }
         
     }else{
-        NSLog(@"successfull to store to the local.");
+        if (debugMode) {
+            NSLog(@"successfull to store to the local.");
+        }
     }
 }
 
@@ -916,7 +1023,9 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
 - (NSDate *)mostRecentUpdatedAtDateForEntityWithName:(NSString *)entityName
 {
     NSDate *date = (NSDate *)[[NSUserDefaults standardUserDefaults] valueForKey:entityName];
-    NSLog(@"most recent updatedAt = %@", date);
+    if (debugMode) {
+        NSLog(@"most recent updatedAt = %@", date);
+    }
     return date;
 }
 
@@ -958,7 +1067,21 @@ NSString * const kSDSyncEngineSyncCompletedNotificationName = @"SDSyncEngineSync
 }
 
 
-
+- (void)isConnectedToInternet{
+    NSURL *myURL = [NSURL URLWithString:@"http://www.google.com/m"];
+    NSData *contentData = [NSData dataWithContentsOfURL:myURL];
+    if (contentData){
+        if (debugMode) {
+            NSLog(@"Connected to the internet");
+        }
+        return true;
+    }else{
+        if (debugMode) {
+            NSLog(@"Not connected to the Internet");
+        }
+        return false;
+    }
+}
 
 
 

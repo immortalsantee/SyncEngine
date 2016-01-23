@@ -11,6 +11,7 @@
 @interface SDSyncEngine : NSObject
 
 @property (atomic, readonly) BOOL syncInProgress;
+@property (atomic, readonly) BOOL debugMode;
 @property (nonatomic, retain) NSString *syncCompleteMessage;
 @property (nonatomic, retain) NSString *baseURL;
 
